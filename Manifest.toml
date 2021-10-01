@@ -518,7 +518,7 @@ version = "2.0.3"
 
 [[PauliMasterEquation]]
 deps = ["LinearAlgebra", "QuantumOpticsBase"]
-path = "/home/scottd/Dropbox/Physics/Research Work/Julia/ResearchPackages/PauliMasterEquation"
+path = "/home/scottd/.julia/dev/PauliMasterEquation"
 uuid = "57b29cf9-c35d-4b78-873d-7012da8b305b"
 version = "0.1.0"
 
