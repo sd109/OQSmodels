@@ -179,28 +179,39 @@ get_spectral_funcs(env_processes) = getproperty.(A_ops(env_processes), :spectrum
 get_A_ops_and_spectral_funcs(env_processes) = [[op.oper, op.spectrum] for op in env_processes if typeof(op) <: InteractionOp]
 
 
-# CONSTRUCTORS
+
+# --------------------------------------------------- CONSTRUCTORS --------------------------------------------------- #
 
 #Constructor which creates NamedTuple
-function OQSmodel(Ham::SystemHamiltonian, env_processes::Vector, ME_type::MasterEquation, InitState::AbstractOperator; options=ModelOptions())
-    return OQSmodel(Ham, NamedTuple{Tuple(Symbol.(getfield.(env_processes, :name)))}(env_processes), ME_type, InitState; options=options)
-    # return OQSmodel(Ham, (; zip(getfield.(env_processes, :name), env_processes)...), ME_type, InitState; options=options)
+function OQSmodel(
+        Ham::SystemHamiltonian, env_processes::Vector, ME_type::MasterEquation, InitState::AbstractOperator; 
+        L = transport_generator(Ham.op, env_processes, ME_type), options=ModelOptions(),
+    )
+    return OQSmodel(Ham, NamedTuple{Tuple(Symbol.(getfield.(env_processes, :name)))}(env_processes), ME_type, InitState; options=options, L=L)
 end
 
 # Constructor which calculates L automatically
-function OQSmodel(Ham::SystemHamiltonian, env_processes::NamedTuple, ME_type::MasterEquation, InitState::AbstractOperator; options=ModelOptions())
-    L = transport_generator(Ham.op, env_processes, ME_type) # Calculate time dynamics generator for master equation
-    tr(InitState) != 1 && throw(error("Initial state not correctly normalized!")) 
+function OQSmodel(
+        Ham::SystemHamiltonian, env_processes::NamedTuple, ME_type::MasterEquation, InitState::AbstractOperator; 
+        L = transport_generator(Ham.op, env_processes, ME_type), options=ModelOptions(),
+    )
+    tr(InitState) != 1 && throw(error("Initial state not correctly normalized!"))
     return OQSmodel(Ham, env_processes, ME_type, InitState, L, options)
 end
 
 # Constructor which converts Ket to Density Matrix
-function OQSmodel(Ham::SystemHamiltonian, env_processes::Array, ME_type::MasterEquation, InitState::Ket; options=ModelOptions())
-    return OQSmodel(Ham, env_processes, ME_type, dm(InitState), options=options)
+function OQSmodel(
+        Ham::SystemHamiltonian, env_processes::Array, ME_type::MasterEquation, InitState::Ket; 
+        L = transport_generator(Ham.op, env_processes, ME_type), options=ModelOptions(),
+    )
+    return OQSmodel(Ham, env_processes, ME_type, dm(InitState); options=options, L=L)
 end
 
 # Constructor which creates localized initial state
-function OQSmodel(Ham::SystemHamiltonian, env_processes::Vector, ME_type::MasterEquation, InitSite::Int; options=ModelOptions())
+function OQSmodel(
+        Ham::SystemHamiltonian, env_processes::Vector, ME_type::MasterEquation, InitSite::Int; 
+        L = transport_generator(Ham.op, env_processes, ME_type), options=ModelOptions(),
+    )
 
     if typeof(basis(Ham)) <: NLevelBasis
         InitState = transition(Float64, basis(Ham), InitSite, InitSite) #nlevelstate(basis(Ham), InitSite) |> dm |> sparse
@@ -214,7 +225,7 @@ function OQSmodel(Ham::SystemHamiltonian, env_processes::Vector, ME_type::Master
         error("Hamiltonian basis not recognized during initial state construction")
     end
 
-    return OQSmodel(Ham, env_processes, ME_type, InitState, options=options)
+    return OQSmodel(Ham, env_processes, ME_type, InitState, options=options, L=L)
 end
 
 
