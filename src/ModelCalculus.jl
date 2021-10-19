@@ -317,7 +317,6 @@ function SpectrumParamDeriv(model::OQSmodel, proc_name::String, param_name::Symb
 
    # Construct DiffParam
    return DiffParam(proc_name * "-" * string(param_name), param_val, (model, val) -> vary_spectrum_param(model, proc_name, param_name, val), scale)
-   # return DiffParam(proc_name * "-" * string(param_name), param_val, (model, val) -> (@show val; vary_spectrum_param(model, proc_name, param_name, val)), scale)
 end
 
 # Single proc, multi-param, single scale:
@@ -368,8 +367,7 @@ function SpectrumParamSimDeriv(model::OQSmodel, name_pattern::String, param_name
 
    map(x -> isequal(param_vals[1], x), param_vals[2:end]) |> sum == length(param_vals) - 1 || throw(error("Not all param values to be varied simultansiously are equal. Param values: $(param_vals)"))
    # If equal check passed then construct DiffParam
-   # return DiffParam(name_pattern * "-" * string(param_name), param_vals[1], (model, val) -> vary_multi_spectrum_param(model, getfield.(proc_list, :name), param_name, val), scale)
-   return DiffParam(name_pattern * "-" * string(param_name), param_vals[1], (model, val) -> (@show val; vary_multi_spectrum_param(model, getfield.(proc_list, :name), param_name, val)), scale)
+   return DiffParam(name_pattern * "-" * string(param_name), param_vals[1], (model, val) -> vary_multi_spectrum_param(model, getfield.(proc_list, :name), param_name, val), scale)
 
 end
 # Multi-proc, multi-param, single scale:
