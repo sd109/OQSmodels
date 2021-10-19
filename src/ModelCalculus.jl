@@ -59,11 +59,11 @@ Base.show(io::IO, x::ModelGradient) = show(io, x.grad_vec)
 export gradient
 function gradient(model::OQSmodel, FoM, param_list::Vector{P} where P <: DiffParam)
 
-   # Use all available threads for derivatives w.r.t. different parameters
    fx = FoM(model)
    param_list_len = length(param_list)
-   grad = fill(zero(fx), param_list_len) # [zero(fx) for i in 1:param_list_len] # Pre-allocate grad list
+   grad = fill(zero(fx), param_list_len) # Pre-allocate grad list
 
+   # Use all available threads for derivatives w.r.t. different parameters
    Threads.@threads for i in 1:param_list_len
       if model.options.extrapolate_deriv
          grad[i] = extrapolate_deriv(model, FoM, param_list[i])
@@ -248,7 +248,7 @@ function vary_multi_collapse_rate!(model::OQSmodel, proc_list::Array{String,1}, 
 end
 
 # Non-mutating version
-vary_multi_collapse_rate(model::OQSmodel, proc_list::Array{String,1}, new_val::Number) = vary_multi_collapse_rate!(deepcopy(model), proc_list, new_val)
+vary_multi_collapse_rate(model::OQSmodel, proc_list::Array{String,1}, new_val::Number) = vary_multi_collapse_rate!(copy(model), proc_list, new_val)
 
 
 # Simple functions for constructing relevant DiffParam instances
@@ -275,31 +275,49 @@ end
 
 function vary_spectrum_param!(model::OQSmodel, proc_name::String, param_name::Symbol, new_val::Number; update_generator=true)
 
-   # Get proc idx from env_processes and param idx from spectrum.arg_names
-   proc_idx = findfirst(string.(keys(model.env_processes)) .== proc_name) #get_env_process_idx(model, proc_name)
-   #Set new arg value (need to create new NamedTuples since they're immutable)
-   model.env_processes[proc_idx].spectrum.args = (; model.env_processes[proc_idx].spectrum.args..., [param_name => new_val]...)
+   #Update env process spectrum (env_processes NamedTuple is immutable but fields of it's elements can still be mutated - is this bad practice?)
+   proc = model.env_processes[Symbol(proc_name)]
+   model.env_processes[Symbol(proc_name)].spectrum = SpectralDensity(proc.spectrum.func, (; proc.spectrum.args..., [param_name => new_val]...))
+   update_generator && (model.L = transport_generator(model))
+
+   # # Get proc idx from env_processes and param idx from spectrum.arg_names
+   # proc_idx = findfirst(string.(keys(model.env_processes)) .== proc_name) #get_env_process_idx(model, proc_name)
+   # #Set new arg value (need to create new NamedTuples since they're immutable)
+   # model.env_processes[proc_idx].spectrum.args = (; model.env_processes[proc_idx].spectrum.args..., [param_name => new_val]...)
+
+   # New NamedTuple implementation
+   # proc = model.env_processes[Symbol(proc_name)]
+   # proc.spectrum = SpectralDensity(proc.spectrum.func, (; proc.spectrum.args..., [param_name => new_val]...))
+
+   # model.env_processes = (; model.env_processes..., [Symbol(proc_name) => InteractionOp(proc_name, proc.oper, new_spectrum)]...) #Replace env process with updated version
+
    # Construct new model then set relevant params in model
-   if update_generator
-      # new_model = OQSmodel(model.Ham, model.env_processes, model.ME_type, model.InitState)
-      # model.A_ops = new_model.A_ops
-      # model.L = new_model.L
-      model.L = transport_generator(model)
-   end
+   # update_generator && (model.L = transport_generator(model))
+   # if update_generator
+   #    # new_model = OQSmodel(model.Ham, model.env_processes, model.ME_type, model.InitState)
+   #    # model.A_ops = new_model.A_ops
+   #    # model.L = new_model.L
+   #    model.L = transport_generator(model)
+   # end
 
    return model
 end
 
-vary_spectrum_param(model::OQSmodel, proc_name::String, param_name::Symbol, new_val::Number) = vary_spectrum_param!(deepcopy(model), proc_name, param_name, new_val)
+vary_spectrum_param(model::OQSmodel, proc_name::String, param_name::Symbol, new_val::Number) = vary_spectrum_param!(copy(model), proc_name, param_name, new_val)
 
 # Simple functions to construct spectrum param DiffParam instances
 export SpectrumParamDeriv
 # Single proc, single param, single scale
 function SpectrumParamDeriv(model::OQSmodel, proc_name::String, param_name::Symbol, scale)
-   proc_idx = get_env_process_idx(model, proc_name) # Get proc idx from env_processes and param idx from spectrum.arg_names
-   param_val = model.env_processes[proc_idx].spectrum.args[param_name] # Get param val
+   # proc_idx = get_env_process_idx(model, proc_name) # Get proc idx from env_processes and param idx from spectrum.arg_names
+   # param_val = model.env_processes[proc_idx].spectrum.args[param_name] # Get param val
+
+   # New NamedTuple implementation
+   param_val = model.env_processes[Symbol(proc_name)].spectrum.args[param_name]
+
    # Construct DiffParam
    return DiffParam(proc_name * "-" * string(param_name), param_val, (model, val) -> vary_spectrum_param(model, proc_name, param_name, val), scale)
+   # return DiffParam(proc_name * "-" * string(param_name), param_val, (model, val) -> (@show val; vary_spectrum_param(model, proc_name, param_name, val)), scale)
 end
 
 # Single proc, multi-param, single scale:
@@ -327,21 +345,31 @@ function vary_multi_spectrum_param!(model::OQSmodel, proc_list::Array{String,1},
 end
 
 # Non-mutating version
-vary_multi_spectrum_param(model::OQSmodel, proc_list::Array{String,1}, param_name::Symbol, new_val::Number) = vary_multi_spectrum_param!(deepcopy(model), proc_list, param_name, new_val)
+vary_multi_spectrum_param(model::OQSmodel, proc_list::Array{String,1}, param_name::Symbol, new_val::Number) = vary_multi_spectrum_param!(copy(model), proc_list, param_name, new_val)
 
 
 # Simple functions for constructing relevant DiffParam instances
 export SpectrumParamSimDeriv
 # Multi-proc, single-param, single scale:
 function SpectrumParamSimDeriv(model::OQSmodel, name_pattern::String, param_name::Symbol, scale)
-   # Get all proc idxs which contain name_pattern
-   proc_idxs = [get_env_process_idx(model, proc.name) for proc in model.env_processes if occursin(name_pattern, proc.name)]
-   length(proc_idxs) == 0 && throw(error("name_pattern ($(name_pattern)) not found in any env_process names"))
-   # Get param val and check it is the same in all procs
-   param_vals = [model.env_processes[idx].spectrum.args[param_name] for idx in proc_idxs]
-   map(x -> isequal(param_vals[1], x), param_vals[2:end]) |> sum == length(param_vals) - 1 || throw(error("Not all param values to be varied Simultansiously are equal. Param values: $(param_vals)"))
+   
+   # Old implementation 
+
+   # # Get all proc idxs which contain name_pattern
+   # proc_idxs = [get_env_process_idx(model, proc.name) for proc in model.env_processes if occursin(name_pattern, proc.name)]
+   # length(proc_idxs) == 0 && throw(error("name_pattern ($(name_pattern)) not found in any env_process names"))
+   # # Get param val and check it is the same in all procs
+   # param_vals = [model.env_processes[idx].spectrum.args[param_name] for idx in proc_idxs]
+
+   # New NamedTuple implementation
+   proc_list = [p for p in model.env_processes if occursin(name_pattern, p.name)]
+   length(proc_list) == 0 && throw(error("name_pattern ($(name_pattern)) not found in any env_process names"))
+   param_vals = [p.spectrum.args[param_name] for p in proc_list] #[p.spectrum.args[param_name] for p in model.env_processes if occursin(name_pattern, p.name)]
+
+   map(x -> isequal(param_vals[1], x), param_vals[2:end]) |> sum == length(param_vals) - 1 || throw(error("Not all param values to be varied simultansiously are equal. Param values: $(param_vals)"))
    # If equal check passed then construct DiffParam
-   return DiffParam(name_pattern * "-" * string(param_name), param_vals[1], (model, val) -> vary_multi_spectrum_param(model, getfield.(model.env_processes[proc_idxs], :name), param_name, val), scale)
+   # return DiffParam(name_pattern * "-" * string(param_name), param_vals[1], (model, val) -> vary_multi_spectrum_param(model, getfield.(proc_list, :name), param_name, val), scale)
+   return DiffParam(name_pattern * "-" * string(param_name), param_vals[1], (model, val) -> (@show val; vary_multi_spectrum_param(model, getfield.(proc_list, :name), param_name, val)), scale)
 
 end
 # Multi-proc, multi-param, single scale:
@@ -351,8 +379,34 @@ SpectrumParamSimDeriv(model, name_pattern::String, param_list::Array{Symbol,1}, 
 
 
 
+# ------------------------ DiffParam implementation for weightings in CollectiveInteractionOp ------------------------ #
 
-# DiffParam constructors for DickeHamiltonian and DickeLadderHamiltonian
+export InteractionWeightingsDeriv
+
+function vary_interaction_weightings!(model::OQSmodel, proc_name::String, weight_idx::Int, new_val::Real; update_generator=true)
+
+   proc = model.env_processes[Symbol(proc_name)]
+   proc.weightings[weight_idx] = new_val
+   model.env_processes = (; model.env_processes..., [proc_name => proc]...) #Replace proc with updated weight value
+   update_generator && (model.L = transport_generator(model))
+
+   return model
+end
+#Non-mutating version
+vary_interaction_weightings(m::OQSmodel, p::String, idx::Int, val::Real; kwargs...) = vary_interaction_weightings!(copy(m), p, idx, val; kwargs...)
+
+# function InteractionWeightingsDeriv(model::OQSmodel, proc_name::String)
+
+# function vary_multi_interaction_weighting!(model::OQSmodel, name_pattern::String, weight_idx::Int, new_val::Real; update_generator=true)
+# end
+
+# export InteractionWeightingsSimDeriv
+
+
+
+
+
+# ---------------------- DiffParam constructors for DickeHamiltonian and DickeLadderHamiltonian ---------------------- #
 
 export AtomEnergyDeriv
 function AtomEnergyDeriv(m::OQSmodel, scale::Number) 

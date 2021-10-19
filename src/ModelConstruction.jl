@@ -3,13 +3,13 @@
 
 
 # Export lots of types
-export EnvState, EnvProcess, CollapseOp, InteractionOp
-export SpectralDensity #, arg_names, arg_values, get_arg_value, set_arg_value!
+export EnvState, EnvProcess, CollapseOp, InteractionOp, CollectiveInteractionOp
+export SpectralDensity
 export OQSmodel, ModelOptions
 export MasterEquation, LindbladME, BlochRedfieldME, PauliME
 # Export some functions too
 export coupling_operator, transport_generator
-export data, get_env_state_idx, get_env_state #, get_env_process_idx, get_env_process
+export data, get_env_state_idx, get_env_state, oper
 
 using LinearAlgebra, IterTools, QuantumOptics, PauliMasterEquation
 using FiniteDiff, FiniteDifferences # For default finite_diff_func in ModelOptions
@@ -65,6 +65,16 @@ mutable struct InteractionOp{O <: AbstractOperator,S <: SpectralDensity} <: EnvP
     spectrum::S
 end
 
+# Collective Bloch-Redfield type interaction operators (e.g. component-wise (i.e. x,y,z) radiative decays weighted by individual site dipole components)
+mutable struct CollectiveInteractionOp{O <: AbstractOperator, S <: SpectralDensity, R <: Real} <: EnvProcess
+    name::String
+    op_list::Vector{O}
+    weightings::Vector{R}
+    spectrum::S
+end
+
+oper(A::CollectiveInteractionOp) = sum(A.weightings .* A.op_list) #Construct single operator via weighted sum
+oper(A::EnvProcess) = A.oper #Compatibility method for other EnvProcess sub-types (more specific CollectiveInteractionOp method will be prioritized)
 
 
 
@@ -173,10 +183,10 @@ end
 Base.copy(m::OQSmodel) = OQSmodel(copy(m.Ham), deepcopy(m.env_processes), m.ME_type, copy(m.InitState), copy(m.L), deepcopy(m.options))
 
 # Getter functions to replace unnecessary model fields 
-get_C_ops(env_processes) = [sqrt(op.rate) * op.oper for op in env_processes if typeof(op) <: CollapseOp]
-get_A_ops(env_processes) = [op.oper for op in env_processes if typeof(op) <: InteractionOp]
+get_C_ops(env_processes) = [sqrt(op.rate) * oper(op) for op in env_processes if typeof(op) <: CollapseOp]
+get_A_ops(env_processes) = [oper(op) for op in env_processes if typeof(op) <: Union{InteractionOp, CollectiveInteractionOp}]
 get_spectral_funcs(env_processes) = getproperty.(A_ops(env_processes), :spectrum)
-get_A_ops_and_spectral_funcs(env_processes) = [[op.oper, op.spectrum] for op in env_processes if typeof(op) <: InteractionOp]
+get_A_ops_and_spectral_funcs(env_processes) = [[oper(op), op.spectrum] for op in env_processes if typeof(op) <: Union{InteractionOp, CollectiveInteractionOp}]
 
 
 
