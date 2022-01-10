@@ -1,6 +1,6 @@
 # This file is machine-generated - editing it directly is not advised
 
-julia_version = "1.7.1"
+julia_version = "1.7.0"
 manifest_format = "2.0"
 
 [[deps.AbstractFFTs]]
@@ -555,7 +555,7 @@ version = "2.1.3"
 
 [[deps.PauliMasterEquation]]
 deps = ["LinearAlgebra", "QuantumOpticsBase"]
-path = "/home/scottd/.julia/dev/PauliMasterEquation"
+path = "/home/sd109/.julia/dev/PauliMasterEquation"
 uuid = "57b29cf9-c35d-4b78-873d-7012da8b305b"
 version = "0.1.0"
 
